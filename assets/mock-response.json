@@ -1,0 +1,52 @@
+{
+  "sessionId": "a1b2c3d4-7e9f-4a21-9c3d-1f2e3a4b5c6d",
+  "status": "PROCESS_STATUS_SUCCESS",
+  "fileName": "Договор_поставки_47-2024.pdf",
+  "fields": {
+    "CONTRACT_NUMBER":        { "value": "№ 47/2024",        "confidence": 0.96, "kind": "FIELD_KIND_FREE_TEXT", "required": true },
+    "CONTRACT_DATE":          { "value": "2024-03-15",        "confidence": 0.93, "kind": "FIELD_KIND_FREE_TEXT", "required": true },
+    "DELIVERY_DATE":          { "value": "2024-06-30",        "confidence": 0.81, "kind": "FIELD_KIND_FREE_TEXT", "required": true },
+    "AGREEMENT_NUMBER":       { "value": "ДС-2",              "confidence": 0.62, "kind": "FIELD_KIND_FREE_TEXT", "required": false },
+
+    "PRODUCT_TYPE_NAME":      { "value": "Пшеница",           "confidence": 0.91, "kind": "FIELD_KIND_REFERENCE", "required": true,  "referenceMatched": true },
+    "AMOUNT":                 { "value": "1500",              "confidence": 0.94, "kind": "FIELD_KIND_FREE_TEXT", "required": true },
+    "PRICE":                  { "value": "18500",             "confidence": 0.90, "kind": "FIELD_KIND_FREE_TEXT", "required": true },
+    "HARVEST_YEAR":           { "value": "2023",              "confidence": 0.58, "kind": "FIELD_KIND_FREE_TEXT", "required": false },
+    "IS_PRICE_NDS":           { "value": "true",              "confidence": 0.87, "kind": "FIELD_KIND_FREE_TEXT", "required": false },
+
+    "MANUFACTURER_NAME":      { "value": "ООО «Агрохолдинг Юг»", "confidence": 0.84, "kind": "FIELD_KIND_REFERENCE", "required": true, "referenceMatched": true },
+    "MANUFACTURER_INN":       { "value": "7707083893",        "confidence": 0.66, "kind": "FIELD_KIND_FREE_TEXT", "required": false },
+    "PURCHASER_NAME":         { "value": "АО «Зерно Экспорт»","confidence": 0.88, "kind": "FIELD_KIND_REFERENCE", "required": true,  "referenceMatched": false },
+    "PURCHASER_INN":          { "value": "7736050003",        "confidence": 0.92, "kind": "FIELD_KIND_FREE_TEXT", "required": true },
+
+    "DELIVERY_TYPE_NAME":     { "value": "FOB",               "confidence": 0.83, "kind": "FIELD_KIND_REFERENCE", "required": true,  "referenceMatched": true },
+    "DELIVERY_METHOD_NAME":   { "value": "Автомобильный транспорт", "confidence": 0.71, "kind": "FIELD_KIND_REFERENCE", "required": true, "referenceMatched": true },
+    "DELIVERY_RF_SUBJECT_NAME": { "value": "Краснодарский край", "confidence": 0.86, "kind": "FIELD_KIND_REFERENCE", "required": false, "referenceMatched": true },
+    "DELIVERY_ADDRESS":       { "value": "г. Новороссийск, Портовая ул., 14", "confidence": 0.64, "kind": "FIELD_KIND_FREE_TEXT", "required": false },
+
+    "IS_EXPORT_DELIVERY_FLAG": { "value": "true",             "confidence": 0.79, "kind": "FIELD_KIND_FREE_TEXT", "required": false }
+  },
+  "validationErrors": [
+    {
+      "field": "IS_EXPORT_DELIVERY_FLAG",
+      "message": "Признак экспорта «Да», но страна назначения не заполнена. Укажите страну назначения товара.",
+      "severity": "SEVERITY_ERROR",
+      "ruleCode": "RULE_EXPORT_COUNTRY_REQUIRED",
+      "relatedFields": ["DELIVERY_COUNTRY_NAME"]
+    },
+    {
+      "field": "DELIVERY_TYPE_NAME",
+      "message": "Базис FOB предполагает только водный транспорт. Указан «Автомобильный транспорт» — проверьте способ поставки.",
+      "severity": "SEVERITY_ERROR",
+      "ruleCode": "RULE_FOB_WATER_ONLY",
+      "relatedFields": ["DELIVERY_METHOD_NAME"]
+    },
+    {
+      "field": "MANUFACTURER_INN",
+      "message": "ИНН производителя рекомендуется заполнять для исключения дублей договоров.",
+      "severity": "SEVERITY_WARNING",
+      "ruleCode": "RULE_MANUFACTURER_INN_RECOMMENDED",
+      "relatedFields": []
+    }
+  ]
+}

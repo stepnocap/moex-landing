@@ -1,0 +1,9 @@
+node_modules/
+temporary screenshots/
+*.log
+.DS_Store
+
+# Dev-only tooling, not part of the landing
+skills/
+CLAUDE.md
+

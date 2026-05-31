@@ -1,0 +1,14 @@
+{
+  "name": "moex-otc-landing",
+  "version": "1.0.0",
+  "description": "MOEX OTC contract registration smart-form landing (hackathon concept)",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "serve": "node serve.mjs",
+    "shot": "node screenshot.mjs http://localhost:3000"
+  },
+  "devDependencies": {
+    "puppeteer": "^23.0.0"
+  }
+}
