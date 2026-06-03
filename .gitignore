@@ -1,9 +1,22 @@
-node_modules/
-temporary screenshots/
-*.log
-.DS_Store
+# ============================================================
+# moex-landing (GitHub Pages) — публикуется ТОЛЬКО статика,
+# необходимая для работы сайта. Dev-инструменты остаются локально.
+# ============================================================
 
-# Dev-only tooling, not part of the landing
-skills/
-CLAUDE.md
+# 1. Игнорируем всё по умолчанию
+/*
+/assets/*
+/brand_assets/*
 
+# 2. Разрешаем только то, что нужно сайту для работы:
+!.gitignore
+!index.html
+!assets/
+!assets/demo.js
+!assets/mock-response.json
+!brand_assets/
+!brand_assets/moex-logo.svg
+
+# Намеренно НЕ публикуются (dev-only):
+#   serve.mjs, screenshot.mjs, package.json, package-lock.json,
+#   README.md, node_modules/, skills/, CLAUDE.md, temporary screenshots/
