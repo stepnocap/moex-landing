@@ -12,6 +12,7 @@
 !.gitignore
 !index.html
 !assets/
+!assets/catalog.js
 !assets/demo.js
 !assets/mock-response.json
 !brand_assets/

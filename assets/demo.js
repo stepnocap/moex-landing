@@ -8,50 +8,33 @@
 
   const CONFIDENCE_THRESHOLD = 0.7;
 
-  // User-facing labels for the field codes we surface (служебные скрыты).
-  const LABELS = {
-    CONTRACT_NUMBER: "Номер договора",
-    CONTRACT_DATE: "Дата договора",
-    DELIVERY_DATE: "Срок поставки",
-    AGREEMENT_NUMBER: "Номер доп. соглашения",
-    PRODUCT_TYPE_NAME: "Наименование товара",
-    AMOUNT: "Количество, т",
-    PRICE: "Цена, ₽/т",
-    HARVEST_YEAR: "Год урожая",
-    IS_PRICE_NDS: "Цена включает НДС",
-    MANUFACTURER_NAME: "Производитель",
-    MANUFACTURER_INN: "ИНН производителя",
-    PURCHASER_NAME: "Приобретатель",
-    PURCHASER_INN: "ИНН приобретателя",
-    DELIVERY_TYPE_NAME: "Тип базиса поставки",
-    DELIVERY_METHOD_NAME: "Способ поставки",
-    DELIVERY_RF_SUBJECT_NAME: "Субъект РФ (базис)",
-    DELIVERY_ADDRESS: "Адрес базиса поставки",
-    IS_EXPORT_DELIVERY_FLAG: "Поставка на экспорт",
-    DELIVERY_COUNTRY_NAME: "Страна назначения",
-  };
+  // The form layout lives in the catalog (assets/catalog.js), not here.
+  // ML only decides whether a value is filled — composition/order/block/label/type
+  // are properties of the field. 55 participant fields across 6 real ЛК blocks.
+  const CATALOG = window.MOEX_CATALOG || { BLOCK_ORDER: [], FIELDS: {}, REFERENCE_OPTIONS: {} };
+  const FIELDS = CATALOG.FIELDS;
+  const BLOCK_ORDER = CATALOG.BLOCK_ORDER;
 
-  // Reference-field options (for select rendering).
-  const REFERENCE_OPTIONS = {
-    PRODUCT_TYPE_NAME: ["Пшеница", "Ячмень", "Кукуруза", "Подсолнечник", "Соя"],
-    MANUFACTURER_NAME: ["ООО «Агрохолдинг Юг»", "АО «Кубань-Агро»", "ООО «Дон-Зерно»"],
-    PURCHASER_NAME: ["АО «Зерно Экспорт»", "ООО «Грейн Трейд»", "ПАО «АгроЭкспорт»"],
-    DELIVERY_TYPE_NAME: ["FOB", "CIF", "CFR", "EXW", "DAP"],
-    DELIVERY_METHOD_NAME: ["Водный транспорт", "Автомобильный транспорт", "Железнодорожный транспорт"],
-    DELIVERY_RF_SUBJECT_NAME: ["Краснодарский край", "Ростовская область", "Ставропольский край", "Воронежская область"],
-    DELIVERY_COUNTRY_NAME: ["Турция", "Египет", "Иран", "Саудовская Аравия", "Китай"],
-  };
+  // Codes grouped by block, preserving catalog insertion order within each block.
+  const FIELDS_BY_BLOCK = (() => {
+    const by = {};
+    BLOCK_ORDER.forEach((b) => { by[b] = []; });
+    Object.keys(FIELDS).forEach((code) => {
+      const b = FIELDS[code].block;
+      (by[b] || (by[b] = [])).push(code);
+    });
+    return by;
+  })();
 
-  const BOOL_FIELDS = new Set(["IS_PRICE_NDS", "IS_EXPORT_DELIVERY_FLAG"]);
+  function meta(code) { return FIELDS[code] || { label: code, block: "", kind: "text", required: false, placeholder: "—" }; }
+  function isRequired(code) { return meta(code).required === true; }
 
-  // Field groups (user-facing subset of the 92 fields).
-  const GROUPS = [
-    { title: "Договор", fields: ["CONTRACT_NUMBER", "CONTRACT_DATE", "DELIVERY_DATE", "AGREEMENT_NUMBER"] },
-    { title: "Товар", fields: ["PRODUCT_TYPE_NAME", "AMOUNT", "PRICE", "HARVEST_YEAR", "IS_PRICE_NDS"] },
-    { title: "Стороны", fields: ["MANUFACTURER_NAME", "MANUFACTURER_INN", "PURCHASER_NAME", "PURCHASER_INN"] },
-    { title: "Поставка", fields: ["DELIVERY_TYPE_NAME", "DELIVERY_METHOD_NAME", "DELIVERY_RF_SUBJECT_NAME", "DELIVERY_ADDRESS"] },
-    { title: "Экспорт", fields: ["IS_EXPORT_DELIVERY_FLAG", "DELIVERY_COUNTRY_NAME"] },
-  ];
+  // Reference field → its demo options, or null if no dictionary is wired yet
+  // (then it degrades to a free-text input — real справочники замещают это позже).
+  function resolveOptions(code) {
+    const opts = CATALOG.REFERENCE_OPTIONS[code];
+    return Array.isArray(opts) && opts.length ? opts : null;
+  }
 
   // DELIVERY_COUNTRY_NAME is required only because the doc marks export=Да.
   const REQUIRED_OVERRIDES = { DELIVERY_COUNTRY_NAME: true };
@@ -86,19 +69,19 @@
 
   // Returns one of: ok | warn | err | muted
   function fieldState(code, fv) {
-    const required = (fv && fv.required) || REQUIRED_OVERRIDES[code] || false;
+    const required = isRequired(code) || REQUIRED_OVERRIDES[code] || false;
     if (!fv || fv.value === undefined || fv.value === "") {
       return required ? "err" : "muted";
     }
-    if (fv.kind === "FIELD_KIND_REFERENCE" && fv.referenceMatched === false) return "warn";
+    if (meta(code).kind === "reference" && fv.referenceMatched === false) return "warn";
     return fv.confidence >= CONFIDENCE_THRESHOLD ? "ok" : "warn";
   }
 
-  function tagFor(state, fv) {
+  function tagFor(state, code, fv) {
     if (state === "ok") return { cls: "f-ok", tag: "распознано" };
     if (state === "warn") {
-      const matched = fv && fv.kind === "FIELD_KIND_REFERENCE" && fv.referenceMatched === false;
-      return { cls: "f-warn", tag: matched ? "нет в справочнике" : "проверьте" };
+      const unmatched = fv && meta(code).kind === "reference" && fv.referenceMatched === false;
+      return { cls: "f-warn", tag: unmatched ? "нет в справочнике" : "проверьте" };
     }
     if (state === "err") return { cls: "f-err", tag: "обязательное" };
     return { cls: "f-muted", tag: "не найдено" };
@@ -109,51 +92,93 @@
   }
 
   function renderField(code, fv) {
-    const label = LABELS[code] || code;
+    const m = meta(code);
+    const label = m.label;
     const state = fieldState(code, fv);
-    const { cls, tag } = tagFor(state, fv);
+    const { cls, tag } = tagFor(state, code, fv);
     const value = fv && fv.value !== undefined ? fv.value : "";
-    const isRef = REFERENCE_OPTIONS[code];
+    const ph = m.placeholder || "—";
     const fieldId = "fld_" + code;
 
     let control;
-    if (BOOL_FIELDS.has(code)) {
+    if (m.kind === "bool") {
       const opts = ["", "true", "false"]
         .map((v) => `<option value="${v}" ${v === value ? "selected" : ""}>${v === "" ? "—" : boolText(v)}</option>`)
         .join("");
       control = `<select id="${fieldId}" data-code="${code}" class="w-full bg-transparent text-[14px] font-medium text-moex-ink outline-none cursor-pointer">${opts}</select>`;
-    } else if (isRef) {
-      const set = new Set(REFERENCE_OPTIONS[code]);
+    } else if (m.kind === "reference" && resolveOptions(code)) {
+      // Dictionary wired → select. No dictionary yet → falls through to free-text.
+      const set = new Set(resolveOptions(code));
       if (value) set.add(value);
       const opts = ['<option value="">—</option>']
         .concat([...set].map((o) => `<option value="${escapeAttr(o)}" ${o === value ? "selected" : ""}>${escapeAttr(o)}</option>`))
         .join("");
       control = `<select id="${fieldId}" data-code="${code}" class="w-full bg-transparent text-[14px] font-medium text-moex-ink outline-none cursor-pointer">${opts}</select>`;
     } else {
-      control = `<input id="${fieldId}" data-code="${code}" type="text" value="${escapeAttr(value)}" placeholder="—"
-        class="w-full bg-transparent text-[14px] font-medium text-moex-ink outline-none placeholder:text-moex-mute/60" />`;
+      control = `<input id="${fieldId}" data-code="${code}" type="text" value="${escapeAttr(value)}" placeholder="${escapeAttr(ph)}"
+        class="w-full bg-transparent text-[14px] font-medium text-moex-ink outline-none placeholder:text-moex-mute/55 placeholder:font-normal" />`;
     }
 
     return `
       <div class="f-field ${cls} rounded-xl border px-3.5 py-2.5 transition-shadow" data-field="${code}">
         <div class="flex items-center justify-between gap-2 mb-1">
-          <label for="${fieldId}" class="text-[11.5px] font-medium text-moex-mute">${label}</label>
+          <label for="${fieldId}" class="text-[11.5px] font-medium text-moex-mute leading-tight">${label}</label>
           <span class="f-tag text-[10px] font-semibold rounded px-1.5 py-0.5 whitespace-nowrap">${tag}</span>
         </div>
         ${control}
       </div>`;
   }
 
+  // Visibility border for progressive disclosure (concept B+C):
+  // a field is shown up-front iff it has a value OR is required. Empty optional
+  // fields are tucked under a per-block "показать все поля (ещё N)" toggle so a
+  // field ML missed is never lost — just out of sight until expanded.
+  function isVisibleUpFront(code, fv) {
+    const hasValue = fv && fv.value !== undefined && fv.value !== "";
+    return hasValue || isRequired(code) || REQUIRED_OVERRIDES[code] === true;
+  }
+
   function renderForm(data) {
     const groupsEl = $("formGroups");
-    groupsEl.innerHTML = GROUPS.map((g) => {
-      const cells = g.fields.map((code) => renderField(code, data.fields[code])).join("");
+
+    // B — self-layout: walk the catalog's 6 blocks; a block draws only if the
+    //     catalog assigns fields to it. The form is a function of the catalog,
+    //     never of the ML payload.
+    groupsEl.innerHTML = BLOCK_ORDER.map((block, bi) => {
+      const codes = FIELDS_BY_BLOCK[block] || [];
+      if (!codes.length) return "";
+
+      const shown = codes.filter((c) => isVisibleUpFront(c, data.fields[c]));
+      const hidden = codes.filter((c) => !isVisibleUpFront(c, data.fields[c]));
+      const blockEmpty = shown.length === 0; // no value, nothing required → collapsed
+
+      const shownCells = shown.map((c) => renderField(c, data.fields[c])).join("");
+      const hiddenCells = hidden.map((c) => renderField(c, data.fields[c])).join("");
+
+      const hiddenWrap = hidden.length
+        ? `<div class="block-extra ${blockEmpty ? "" : "hidden"} grid sm:grid-cols-2 gap-3 ${blockEmpty ? "" : "mt-3"}" data-extra="${bi}">${hiddenCells}</div>`
+        : "";
+
+      // Per-block toggle. For a collapsed (fully empty) block it reads "заполнить",
+      // otherwise "показать все поля (ещё N)".
+      const toggle = hidden.length
+        ? `<button type="button" class="block-toggle mt-3 inline-flex items-center gap-1.5 text-[12.5px] font-medium text-moex-mute hover:text-moex-red transition-colors" data-toggle="${bi}" aria-expanded="${blockEmpty}">
+             <svg class="chev shrink-0 ${blockEmpty ? "open" : ""}" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+             <span class="toggle-label">${blockEmpty ? `Заполнить (${hidden.length})` : `Показать все поля (ещё ${hidden.length})`}</span>
+           </button>`
+        : "";
+
+      const grid = shown.length
+        ? `<div class="grid sm:grid-cols-2 gap-3">${shownCells}</div>`
+        : "";
+
       return `
-        <fieldset>
+        <fieldset data-block="${bi}">
           <legend class="font-display font-semibold text-[14px] text-moex-ink mb-3 flex items-center gap-2">
-            <span class="h-3.5 w-1 rounded-full bg-moex-red"></span>${g.title}
+            <span class="h-3.5 w-1 rounded-full ${blockEmpty ? "bg-moex-line" : "bg-moex-red"}"></span>${block}
+            ${blockEmpty ? '<span class="text-[11.5px] font-normal text-moex-mute">— нет данных</span>' : ""}
           </legend>
-          <div class="grid sm:grid-cols-2 gap-3">${cells}</div>
+          ${grid}${hiddenWrap}${toggle}
         </fieldset>`;
     }).join("");
 
@@ -355,7 +380,7 @@
       const wrap = e.target.closest("[data-field]");
       const val = e.target.value;
       wrap.classList.remove("f-ok", "f-warn", "f-err", "f-muted");
-      const required = (mock.fields[code] && mock.fields[code].required) || REQUIRED_OVERRIDES[code] || false;
+      const required = isRequired(code) || REQUIRED_OVERRIDES[code] || false;
       const cls = !val ? (required ? "f-err" : "f-muted") : "f-ok";
       wrap.classList.add(cls);
       const tagEl = wrap.querySelector(".f-tag");
@@ -365,6 +390,26 @@
     };
     $("formGroups").addEventListener("input", onEdit);
     $("formGroups").addEventListener("change", onEdit);
+
+    // Per-block progressive disclosure: reveal a block's empty optional fields.
+    $("formGroups").addEventListener("click", (e) => {
+      const btn = e.target.closest(".block-toggle");
+      if (!btn) return;
+      const bi = btn.getAttribute("data-toggle");
+      const extra = document.querySelector(`.block-extra[data-extra="${bi}"]`);
+      if (!extra) return;
+      const opening = extra.classList.contains("hidden");
+      extra.classList.toggle("hidden");
+      extra.classList.toggle("mt-3", opening);
+      btn.setAttribute("aria-expanded", String(opening));
+      const chev = btn.querySelector(".chev");
+      if (chev) chev.classList.toggle("open", opening);
+      const lbl = btn.querySelector(".toggle-label");
+      if (lbl) {
+        const n = extra.children.length;
+        lbl.textContent = opening ? "Свернуть пустые поля" : `Показать все поля (ещё ${n})`;
+      }
+    });
 
     // Scroll reveal for [data-io] elements. Gate the hiding CSS on JS being ready
     // so the content is never stuck invisible if scripts fail to run.

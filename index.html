@@ -98,6 +98,10 @@
   .f-err   .f-tag{ color:#A80016; background:#FFE9EA; }
   .f-muted .f-tag{ color:#6B6B6B; background:#F0F0F0; }
   .f-flash { box-shadow:0 0 0 3px rgba(255,5,8,.30); }
+
+  /* Per-block progressive-disclosure toggle chevron. */
+  .block-toggle .chev{ transition:transform .22s cubic-bezier(.16,1,.3,1); }
+  .block-toggle .chev.open{ transform:rotate(180deg); }
 </style>
 </head>
 
@@ -455,6 +459,7 @@
   </div>
 </footer>
 
+<script src="assets/catalog.js" defer></script>
 <script src="assets/demo.js" defer></script>
 </body>
 </html>
