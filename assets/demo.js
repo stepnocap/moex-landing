@@ -106,8 +106,19 @@
         .map((v) => `<option value="${v}" ${v === value ? "selected" : ""}>${v === "" ? "—" : boolText(v)}</option>`)
         .join("");
       control = `<select id="${fieldId}" data-code="${code}" class="w-full bg-transparent text-[14px] font-medium text-moex-ink outline-none cursor-pointer">${opts}</select>`;
+    } else if (m.kind === "reference" && m.searchable) {
+      // Large registry (organisations, goods, RF subjects, country, port) → type-to-search
+      // combobox: an <input list> filters a <datalist> as you type, and still accepts a
+      // free value. The demo datalist is REFERENCE_OPTIONS; a real /lookup endpoint
+      // replaces it later (swap how <datalist> is populated, control stays the same).
+      const listId = fieldId + "_list";
+      const datalist = `<datalist id="${listId}">${
+        (resolveOptions(code) || []).map((o) => `<option value="${escapeAttr(o)}"></option>`).join("")
+      }</datalist>`;
+      control = `<input id="${fieldId}" data-code="${code}" type="text" list="${listId}" value="${escapeAttr(value)}" placeholder="${escapeAttr(ph)}"
+        class="w-full bg-transparent text-[14px] font-medium text-moex-ink outline-none placeholder:text-moex-mute/55 placeholder:font-normal" />${datalist}`;
     } else if (m.kind === "reference" && resolveOptions(code)) {
-      // Dictionary wired → select. No dictionary yet → falls through to free-text.
+      // Short dictionary wired → select. No dictionary yet → falls through to free-text.
       const set = new Set(resolveOptions(code));
       if (value) set.add(value);
       const opts = ['<option value="">—</option>']
@@ -119,6 +130,12 @@
         class="w-full bg-transparent text-[14px] font-medium text-moex-ink outline-none placeholder:text-moex-mute/55 placeholder:font-normal" />`;
     }
 
+    // Static helper: a rule/condition that must stay visible while typing
+    // (placeholder disappears on input — these constraints must not).
+    const helper = m.helper
+      ? `<p class="f-help text-[11px] leading-snug text-moex-mute/90 mt-1.5">${m.helper}</p>`
+      : "";
+
     return `
       <div class="f-field ${cls} rounded-xl border px-3.5 py-2.5 transition-shadow" data-field="${code}">
         <div class="flex items-center justify-between gap-2 mb-1">
@@ -126,6 +143,8 @@
           <span class="f-tag text-[10px] font-semibold rounded px-1.5 py-0.5 whitespace-nowrap">${tag}</span>
         </div>
         ${control}
+        ${helper}
+        <p class="f-warnmsg hidden items-start gap-1.5 text-[11px] leading-snug text-warn mt-1.5"></p>
       </div>`;
   }
 
@@ -183,7 +202,15 @@
     }).join("");
 
     // Initial validation is computed live so it matches what the user can fix.
-    renderValidation(computeErrors());
+    revalidate();
+  }
+
+  // Single source for re-running rules: updates BOTH the per-field paint and the
+  // summary box from one computeErrors() pass so they can never disagree.
+  function revalidate() {
+    const errors = computeErrors();
+    applyFieldRules(errors);
+    renderValidation(errors);
   }
 
   function renderValidation(errors) {
@@ -253,15 +280,27 @@
   }
 
   // Re-evaluates the subset of MOEX rules the demo can check against live values.
-  // Mirrors proto/docs/validation-rules.md; clears as the user fixes the inputs.
+  // Mirrors proto/docs/validation-rules.md + сотрудники МБ «Типовые ошибки …».
+  // Each rule names a primary `field` and `relatedFields`; both the summary box and
+  // the per-field highlight read from this one list, so they never diverge.
+  // severity: SEVERITY_ERROR (red, blocks submit) | SEVERITY_WARNING (yellow, «перепроверьте»).
   function computeErrors() {
     const errs = [];
     const exportFlag = currentValue("IS_EXPORT_DELIVERY_FLAG");
     const country = currentValue("DELIVERY_COUNTRY_NAME");
-    const basis = currentValue("DELIVERY_TYPE_NAME");
-    const method = currentValue("DELIVERY_METHOD_NAME");
+    const terms = currentValue("DELIVERY_TYPE_NAME");      // условия поставки (Incoterms)
+    const basisType = currentValue("BASIS_TYPE_NAME");      // тип базиса поставки
+    const method = currentValue("DELIVERY_METHOD_NAME");    // способ поставки
     const inn = currentValue("MANUFACTURER_INN");
+    const nds = currentValue("IS_PRICE_NDS");
+    const transInPrice = currentValue("IS_PRICE_TRANSPORTATION_COSTS");
+    const amount = toNum(currentValue("AMOUNT"));
+    const price = toNum(currentValue("PRICE"));
+    const basisPrice = toNum(currentValue("PRODUCT_BASIS_PRICE"));
+    const waterTerms = ["FAS", "FOB", "CFR", "CIF"]; // Incoterms 2020 «вода»: требуют водного транспорта
 
+    // ── HARD ERRORS (red, block submission) ───────────────────────────────
+    // Export=Да требует страну назначения.
     if (exportFlag === "true" && !country) {
       errs.push({
         field: "IS_EXPORT_DELIVERY_FLAG",
@@ -270,14 +309,72 @@
         relatedFields: ["DELIVERY_COUNTRY_NAME"],
       });
     }
-    if (["FOB", "CIF", "CFR"].includes(basis) && method && method !== "Водный транспорт") {
+    // Цена к базису не может превышать цену за тонну (комментарий, который у МБ «не работал»).
+    if (basisPrice !== null && price !== null && basisPrice > price) {
+      errs.push({
+        field: "PRODUCT_BASIS_PRICE",
+        message: "Цена, приведённая к базису, превышает цену товара за тонну. Она должна быть меньше или равна цене договора.",
+        severity: "SEVERITY_ERROR", ruleCode: "RULE_BASIS_PRICE_LE_PRICE",
+        relatedFields: ["PRICE"],
+      });
+    }
+
+    // ── SOFT WARNINGS (yellow, «перепроверьте», не блокируют) ──────────────
+    // Зарубежная страна указана, но экспорт = Нет (кейс «Египет + экспорт Нет»).
+    if (exportFlag === "false" && country) {
+      errs.push({
+        field: "IS_EXPORT_DELIVERY_FLAG",
+        message: `Указана страна назначения «${country}», но признак экспорта — «Нет». Перепроверьте.`,
+        severity: "SEVERITY_WARNING", ruleCode: "RULE_EXPORT_COUNTRY_MISMATCH",
+        relatedFields: ["DELIVERY_COUNTRY_NAME"],
+      });
+    }
+    // Условия поставки FOB/CIF/CFR → способ поставки только водный.
+    if (waterTerms.includes(terms) && method && method !== "Водный транспорт") {
       errs.push({
         field: "DELIVERY_TYPE_NAME",
-        message: `Базис ${basis} предполагает только водный транспорт. Указан «${method}» — проверьте способ поставки.`,
-        severity: "SEVERITY_ERROR", ruleCode: "RULE_FOB_WATER_ONLY",
+        message: `При условиях поставки ${terms} способ поставки — только водный транспорт. Указан «${method}» — перепроверьте.`,
+        severity: "SEVERITY_WARNING", ruleCode: "RULE_TERMS_WATER_ONLY",
         relatedFields: ["DELIVERY_METHOD_NAME"],
       });
     }
+    // Тип базиса «Порт» → обычно водный транспорт.
+    if (basisType === "Порт" && method && method !== "Водный транспорт") {
+      errs.push({
+        field: "BASIS_TYPE_NAME",
+        message: `Для базиса «Порт» обычно используется водный транспорт. Указан «${method}» — перепроверьте.`,
+        severity: "SEVERITY_WARNING", ruleCode: "RULE_PORT_BASIS_WATER",
+        relatedFields: ["DELIVERY_METHOD_NAME"],
+      });
+    }
+    // Аномальный объём — признак сомнительной сделки (< 1 т или > 100 000 т).
+    if (amount !== null && (amount < 1 || amount > 100000)) {
+      errs.push({
+        field: "AMOUNT",
+        message: "Нетипичное количество товара (менее 1 т или более 100 000 т) — перепроверьте значение.",
+        severity: "SEVERITY_WARNING", ruleCode: "RULE_AMOUNT_RANGE",
+        relatedFields: [],
+      });
+    }
+    // При экспорте цена обычно без НДС.
+    if (exportFlag === "true" && nds === "true") {
+      errs.push({
+        field: "IS_PRICE_NDS",
+        message: "При поставке на экспорт цена обычно указывается без НДС. Перепроверьте.",
+        severity: "SEVERITY_WARNING", ruleCode: "RULE_EXPORT_NDS",
+        relatedFields: ["IS_EXPORT_DELIVERY_FLAG"],
+      });
+    }
+    // CIF/CFR → цена обычно включает транспортировку (масличные).
+    if (["CIF", "CFR"].includes(terms) && transInPrice === "false") {
+      errs.push({
+        field: "IS_PRICE_TRANSPORTATION_COSTS",
+        message: `При условиях поставки ${terms} цена обычно включает затраты на транспортировку. Перепроверьте.`,
+        severity: "SEVERITY_WARNING", ruleCode: "RULE_CIF_TRANSPORT_INCLUDED",
+        relatedFields: ["DELIVERY_TYPE_NAME"],
+      });
+    }
+    // ИНН производителя рекомендуется (исключает дубли).
     if (!inn) {
       errs.push({
         field: "MANUFACTURER_INN",
@@ -287,6 +384,60 @@
       });
     }
     return errs;
+  }
+
+  function toNum(v) {
+    if (v === undefined || v === null || String(v).trim() === "") return null;
+    const n = parseFloat(String(v).replace(/\s/g, "").replace(",", "."));
+    return Number.isFinite(n) ? n : null;
+  }
+
+  // Map the rule list onto each field: a field gets the first message that names it
+  // (as primary `field`), preferring an ERROR over a WARNING. Drives per-field paint.
+  function fieldRuleMap(errors) {
+    const map = {};
+    errors.forEach((e) => {
+      const sev = e.severity === "SEVERITY_ERROR" ? "err" : "warn";
+      const cur = map[e.field];
+      if (!cur || (cur.sev === "warn" && sev === "err")) {
+        map[e.field] = { sev, message: e.message };
+      }
+    });
+    return map;
+  }
+
+  // Repaint every field's cross-field state (yellow warning border + message under
+  // it, or red for a hard error) without re-rendering the whole form. Confidence-
+  // based base classes (set at render / on manual edit) are preserved when a field
+  // has no active rule. Called after every recompute.
+  function applyFieldRules(errors) {
+    const map = fieldRuleMap(errors);
+    document.querySelectorAll("#formGroups [data-field]").forEach((wrap) => {
+      const code = wrap.getAttribute("data-field");
+      const rule = map[code];
+      const msgEl = wrap.querySelector(".f-warnmsg");
+      // A required-empty field keeps its own red "обязательное" state — don't override.
+      const isRequiredEmpty = wrap.classList.contains("f-err") && !rule;
+      wrap.classList.remove("f-rule-warn", "f-rule-err");
+      if (rule && !isRequiredEmpty) {
+        wrap.classList.add(rule.sev === "err" ? "f-rule-err" : "f-rule-warn");
+        if (msgEl) {
+          // Icon + text: colour is never the sole signal (a11y).
+          const stroke = rule.sev === "err" ? "#A80016" : "#B5820A";
+          msgEl.innerHTML =
+            `<svg class="mt-px shrink-0" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>` +
+            `<span>${escapeAttr(rule.message)}</span>`;
+          msgEl.classList.remove("hidden");
+          msgEl.classList.add("flex");
+          msgEl.classList.toggle("text-warn", rule.sev === "warn");
+          msgEl.classList.toggle("text-moex-red-dark", rule.sev === "err");
+        }
+      } else if (msgEl) {
+        msgEl.innerHTML = "";
+        msgEl.classList.add("hidden");
+        msgEl.classList.remove("flex");
+      }
+    });
   }
 
   // ── Flow ──────────────────────────────────────────────
@@ -373,20 +524,44 @@
     $("restartDemo").addEventListener("click", reset);
     $("submitForm").addEventListener("click", submit);
 
+    // Mark a field as filled-in by the form (autofill): set its base highlight + tag.
+    // Used by the CIF/CFR → «цена включает транспортировку = Да» автозаполнение that
+    // сотрудники МБ просили (избавляет от типовой ошибки на масличных).
+    function paintAutofilled(code) {
+      const wrap = document.querySelector(`[data-field="${code}"]`);
+      if (!wrap) return;
+      wrap.classList.remove("f-err", "f-muted", "f-warn");
+      wrap.classList.add("f-ok");
+      const tagEl = wrap.querySelector(".f-tag");
+      if (tagEl) tagEl.textContent = "заполнено автоматически";
+    }
+
     // Re-evaluate a field's highlight + live validation after manual edits.
     const onEdit = (e) => {
       const code = e.target.getAttribute && e.target.getAttribute("data-code");
       if (!code) return;
       const wrap = e.target.closest("[data-field]");
       const val = e.target.value;
+
+      // Autofill: choosing CIF/CFR implies the price includes transport — preset it
+      // to «Да» (user can still override afterwards). Only nudge if not already «Да».
+      if (code === "DELIVERY_TYPE_NAME" && (val === "CIF" || val === "CFR")) {
+        const tEl = document.getElementById("fld_IS_PRICE_TRANSPORTATION_COSTS");
+        if (tEl && tEl.value !== "true") {
+          tEl.value = "true";
+          paintAutofilled("IS_PRICE_TRANSPORTATION_COSTS");
+        }
+      }
+
       wrap.classList.remove("f-ok", "f-warn", "f-err", "f-muted");
       const required = isRequired(code) || REQUIRED_OVERRIDES[code] || false;
       const cls = !val ? (required ? "f-err" : "f-muted") : "f-ok";
       wrap.classList.add(cls);
       const tagEl = wrap.querySelector(".f-tag");
       if (tagEl) tagEl.textContent = !val ? (required ? "обязательное" : "не найдено") : "изменено вручную";
-      // Recompute cross-field rules so errors clear as the user fixes inputs.
-      renderValidation(computeErrors());
+      // Recompute cross-field rules so per-field warnings + summary clear as the
+      // user fixes inputs (single pass repaints fields and the summary box).
+      revalidate();
     };
     $("formGroups").addEventListener("input", onEdit);
     $("formGroups").addEventListener("change", onEdit);

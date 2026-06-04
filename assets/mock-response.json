@@ -30,6 +30,7 @@
     "DELIVERY_METHOD_NAME":    { "value": "Автомобильный транспорт", "confidence": 0.71, "referenceMatched": true, "required": true },
     "HARVEST_YEAR":            { "value": "2023",                "confidence": 0.55, "referenceMatched": null,  "required": false }
   },
+  "_comment": "validationErrors здесь справочно. Демо считает правила вживую (computeErrors в demo.js) по текущим значениям полей, чтобы подсветка обновлялась при правках — этот массив не читается.",
   "validationErrors": [
     {
       "field": "IS_EXPORT_DELIVERY_FLAG",
@@ -40,17 +41,17 @@
     },
     {
       "field": "DELIVERY_TYPE_NAME",
-      "message": "Базис FOB предполагает только водный транспорт. Указан «Автомобильный транспорт» — проверьте способ поставки.",
-      "severity": "SEVERITY_ERROR",
-      "ruleCode": "RULE_FOB_WATER_ONLY",
+      "message": "При условиях поставки FOB способ поставки — только водный транспорт. Указан «Автомобильный транспорт» — перепроверьте.",
+      "severity": "SEVERITY_WARNING",
+      "ruleCode": "RULE_TERMS_WATER_ONLY",
       "relatedFields": ["DELIVERY_METHOD_NAME"]
     },
     {
-      "field": "MANUFACTURER_INN",
-      "message": "ИНН производителя рекомендуется заполнять для исключения дублей договоров.",
+      "field": "IS_PRICE_NDS",
+      "message": "При поставке на экспорт цена обычно указывается без НДС. Перепроверьте.",
       "severity": "SEVERITY_WARNING",
-      "ruleCode": "RULE_MANUFACTURER_INN_RECOMMENDED",
-      "relatedFields": []
+      "ruleCode": "RULE_EXPORT_NDS",
+      "relatedFields": ["IS_EXPORT_DELIVERY_FLAG"]
     }
   ]
 }

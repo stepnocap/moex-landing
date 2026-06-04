@@ -17,6 +17,12 @@
 !assets/mock-response.json
 !brand_assets/
 !brand_assets/moex-logo.svg
+!brand_assets/fonts/
+!brand_assets/fonts/FavoritPro-Light.otf
+!brand_assets/fonts/FavoritPro-Book.otf
+!brand_assets/fonts/FavoritPro-Medium.otf
+!brand_assets/fonts/FavoritPro-Bold.otf
+!brand_assets/fonts/FavoritPro-Regular.otf
 
 # Намеренно НЕ публикуются (dev-only):
 #   serve.mjs, screenshot.mjs, package.json, package-lock.json,

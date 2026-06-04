@@ -7,9 +7,6 @@
 <meta name="description" content="Загрузите скан договора — сервис распознаёт поля, проверяет их по правилам Московской биржи и предзаполняет форму регистрации внебиржевого договора." />
 
 <script src="https://cdn.tailwindcss.com"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
 
 <script>
   tailwind.config = {
@@ -20,21 +17,23 @@
             red: "#FF0508",
             "red-dark": "#A80016",
             "red-soft": "#FFE9EA",
-            ink: "#1A1A1A",
+            ink: "#33373B",
             mute: "#6B6B6B",
             line: "#E6E6E6",
-            mist: "#F5F5F5",
+            mist: "#F2F2F2",
+            sand: "#EEE7DC",
+            cream: "#FBF7F3",
           },
           ok: { DEFAULT: "#1F9D57", soft: "#E8F6EE" },
           warn: { DEFAULT: "#B5820A", soft: "#FBF1D8" },
         },
         fontFamily: {
-          display: ['Sora', 'system-ui', 'sans-serif'],
-          body: ['"IBM Plex Sans"', 'system-ui', 'sans-serif'],
+          display: ['"Favorit Pro"', 'system-ui', 'sans-serif'],
+          body: ['"Favorit Pro"', 'system-ui', 'sans-serif'],
         },
         boxShadow: {
-          card: "0 1px 2px rgba(26,26,26,.04), 0 8px 24px -12px rgba(26,26,26,.12)",
-          float: "0 12px 48px -16px rgba(168,0,22,.28), 0 2px 8px rgba(26,26,26,.06)",
+          card: "0 1px 2px rgba(51,55,59,.04), 0 8px 24px -12px rgba(51,55,59,.12)",
+          float: "0 12px 48px -16px rgba(168,0,22,.28), 0 2px 8px rgba(51,55,59,.06)",
           redglow: "0 18px 50px -18px rgba(255,5,8,.45)",
         },
       },
@@ -43,19 +42,24 @@
 </script>
 
 <style>
+  /* Official MOEX brand typeface — Favorit Pro (self-hosted). */
+  @font-face{ font-family:'Favorit Pro'; src:url('brand_assets/fonts/FavoritPro-Light.otf') format('opentype'); font-weight:300; font-style:normal; font-display:swap; }
+  @font-face{ font-family:'Favorit Pro'; src:url('brand_assets/fonts/FavoritPro-Book.otf') format('opentype'); font-weight:400; font-style:normal; font-display:swap; }
+  @font-face{ font-family:'Favorit Pro'; src:url('brand_assets/fonts/FavoritPro-Medium.otf') format('opentype'); font-weight:500; font-style:normal; font-display:swap; }
+  @font-face{ font-family:'Favorit Pro'; src:url('brand_assets/fonts/FavoritPro-Medium.otf') format('opentype'); font-weight:600; font-style:normal; font-display:swap; }
+  @font-face{ font-family:'Favorit Pro'; src:url('brand_assets/fonts/FavoritPro-Bold.otf') format('opentype'); font-weight:700; font-style:normal; font-display:swap; }
+  @font-face{ font-family:'Favorit Pro'; src:url('brand_assets/fonts/FavoritPro-Bold.otf') format('opentype'); font-weight:800; font-style:normal; font-display:swap; }
+
   :root { --moex-red:#FF0508; --moex-red-dark:#A80016; }
   html { scroll-behavior: smooth; scroll-padding-top: 84px; }
-  body { font-family:'IBM Plex Sans',system-ui,sans-serif; color:#1A1A1A; -webkit-font-smoothing:antialiased; background:#fff; }
-  .font-display { font-family:'Sora',system-ui,sans-serif; }
+  body { font-family:'Favorit Pro',system-ui,sans-serif; color:#33373B; -webkit-font-smoothing:antialiased; background:#fff; }
+  .font-display { font-family:'Favorit Pro',system-ui,sans-serif; }
 
-  /* Growth-graph background texture (brand metaphor: always up). */
+  /* Soft brand wash — warm red glow, no grid lines. */
   .hero-grid {
     background-image:
       radial-gradient(110% 120% at 85% -10%, rgba(255,5,8,.10), transparent 55%),
-      radial-gradient(90% 90% at 10% 0%, rgba(255,5,8,.05), transparent 50%),
-      linear-gradient(to right, rgba(26,26,26,.04) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(26,26,26,.04) 1px, transparent 1px);
-    background-size: 100% 100%, 100% 100%, 44px 44px, 44px 44px;
+      radial-gradient(90% 90% at 10% 0%, rgba(255,5,8,.05), transparent 50%);
   }
   .grain::before{
     content:""; position:absolute; inset:0; pointer-events:none; opacity:.5; mix-blend-mode:multiply;
@@ -80,7 +84,7 @@
   .btn-primary:hover{ background:var(--moex-red-dark); box-shadow:0 10px 30px -10px rgba(255,5,8,.55); }
   .btn-primary:active{ transform:translateY(1px); }
   .btn-ghost{ transition:background-color .2s ease, border-color .2s ease, color .2s ease; }
-  .btn-ghost:hover{ background:#fff; border-color:#1A1A1A; }
+  .btn-ghost:hover{ background:#fff; border-color:#33373B; }
 
   :focus-visible{ outline:none; box-shadow:0 0 0 3px rgba(255,5,8,.35); border-radius:6px; }
 
@@ -99,6 +103,13 @@
   .f-muted .f-tag{ color:#6B6B6B; background:#F0F0F0; }
   .f-flash { box-shadow:0 0 0 3px rgba(255,5,8,.30); }
 
+  /* Cross-field rule states paint OVER the confidence base (a logical conflict
+     between fields outranks how confident OCR was about one of them). */
+  .f-field.f-rule-warn{ border-color:#ecd79a; background:#FFFDF6; }
+  .f-field.f-rule-err { border-color:#f3b9bb; background:#FFFBFB; }
+  /* Static helper line under a field — always visible, low-emphasis. */
+  .f-help{ }
+
   /* Per-block progressive-disclosure toggle chevron. */
   .block-toggle .chev{ transition:transform .22s cubic-bezier(.16,1,.3,1); }
   .block-toggle .chev.open{ transform:rotate(180deg); }
@@ -108,7 +119,7 @@
 <body class="font-body text-moex-ink">
 
 <!-- ─────────────────────────  HEADER  ───────────────────────── -->
-<header class="fixed top-0 inset-x-0 z-50 border-b border-moex-line/80 bg-white/85 backdrop-blur-md">
+<header class="fixed top-0 inset-x-0 z-50 bg-moex-mist/95 backdrop-blur-md">
   <div class="mx-auto max-w-6xl px-5 h-16 flex items-center justify-between">
     <a href="#top" class="flex items-center gap-3" aria-label="MOEX Moscow Exchange — на главную">
       <img src="brand_assets/moex-logo.svg" alt="MOEX Moscow Exchange" class="h-7 w-auto" width="115" height="40" />
@@ -176,19 +187,19 @@
         <div class="grid grid-cols-2 gap-3 pt-4">
           <div class="space-y-1.5">
             <div class="text-[11px] text-moex-mute">Номер договора</div>
-            <div class="rounded-lg border border-[#bfe3cd] bg-white px-3 py-2 text-[13px] font-medium">№ 47/2024</div>
+            <div class="rounded-lg bg-moex-mist border-l-[3px] border-[#1F9D57] px-3 py-2 text-[13px] font-medium">№ 47/2024</div>
           </div>
           <div class="space-y-1.5">
             <div class="text-[11px] text-moex-mute">Товар</div>
-            <div class="rounded-lg border border-[#bfe3cd] bg-white px-3 py-2 text-[13px] font-medium">Пшеница</div>
+            <div class="rounded-lg bg-moex-mist border-l-[3px] border-[#1F9D57] px-3 py-2 text-[13px] font-medium">Пшеница</div>
           </div>
           <div class="space-y-1.5">
             <div class="text-[11px] text-moex-mute">Количество, т</div>
-            <div class="rounded-lg border border-[#ecd79a] bg-[#FFFDF6] px-3 py-2 text-[13px] font-medium flex items-center justify-between">1500 <span class="text-[10px] font-semibold text-warn bg-warn-soft rounded px-1.5 py-0.5">проверьте</span></div>
+            <div class="rounded-lg bg-moex-mist border-l-[3px] border-[#B5820A] px-3 py-2 text-[13px] font-medium flex items-center justify-between">1500 <span class="text-[10px] font-semibold text-warn bg-warn-soft rounded px-1.5 py-0.5">проверьте</span></div>
           </div>
           <div class="space-y-1.5">
             <div class="text-[11px] text-moex-mute">Цена, ₽/т</div>
-            <div class="rounded-lg border border-[#bfe3cd] bg-white px-3 py-2 text-[13px] font-medium">18 500</div>
+            <div class="rounded-lg bg-moex-mist border-l-[3px] border-[#1F9D57] px-3 py-2 text-[13px] font-medium">18 500</div>
           </div>
         </div>
         <div class="mt-3 rounded-lg border border-[#f3b9bb] bg-[#FFFBFB] px-3 py-2.5 flex items-start gap-2">
@@ -205,30 +216,30 @@
   <div class="mx-auto max-w-6xl px-5">
     <div class="max-w-2xl" data-io>
       <p class="text-[13px] font-semibold uppercase tracking-[.14em] text-moex-red">Как это работает</p>
-      <h2 class="font-display font-bold tracking-[-.02em] text-[32px] sm:text-[40px] mt-3 leading-[1.1]">Три шага вместо ручного заполнения 92 полей</h2>
+      <h2 class="font-display font-bold tracking-[-.02em] text-[32px] sm:text-[40px] mt-3 leading-[1.1]">Три шага вместо ручного заполнения формы</h2>
     </div>
 
     <ol class="grid md:grid-cols-3 gap-5 mt-12">
-      <li data-io class="relative rounded-2xl border border-moex-line bg-moex-mist/60 p-6 shadow-card">
+      <li data-io class="relative rounded-3xl bg-moex-mist p-7">
         <span class="font-display font-extrabold text-moex-red/30 text-[40px] leading-none">01</span>
-        <div class="mt-3 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-white border border-moex-line">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0L8 8m4-4 4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+        <div class="mt-3 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-white">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#33373B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0L8 8m4-4 4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
         </div>
         <h3 class="font-display font-bold text-[19px] mt-4">Загрузите скан</h3>
         <p class="text-[15px] leading-[1.6] text-moex-mute mt-2">PDF или фотография договора. Файл обрабатывается в рамках одной сессии и не хранится дольше необходимого.</p>
       </li>
-      <li data-io style="transition-delay:.08s" class="relative rounded-2xl border border-moex-line bg-moex-mist/60 p-6 shadow-card">
+      <li data-io style="transition-delay:.08s" class="relative rounded-3xl bg-moex-mist p-7">
         <span class="font-display font-extrabold text-moex-red/30 text-[40px] leading-none">02</span>
-        <div class="mt-3 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-white border border-moex-line">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 21l-4.3-4.3M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z"/></svg>
+        <div class="mt-3 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-white">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#33373B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 21l-4.3-4.3M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z"/></svg>
         </div>
         <h3 class="font-display font-bold text-[19px] mt-4">Сервис распознаёт и проверяет</h3>
         <p class="text-[15px] leading-[1.6] text-moex-mute mt-2">Поля извлекаются, сверяются со справочниками и проходят правила валидации Московской биржи. Спорные значения подсвечиваются.</p>
       </li>
-      <li data-io style="transition-delay:.16s" class="relative rounded-2xl border border-moex-line bg-moex-mist/60 p-6 shadow-card">
+      <li data-io style="transition-delay:.16s" class="relative rounded-3xl bg-moex-mist p-7">
         <span class="font-display font-extrabold text-moex-red/30 text-[40px] leading-none">03</span>
-        <div class="mt-3 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-white border border-moex-line">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        <div class="mt-3 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-white">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#33373B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
         </div>
         <h3 class="font-display font-bold text-[19px] mt-4">Проверьте и отправьте</h3>
         <p class="text-[15px] leading-[1.6] text-moex-mute mt-2">Предзаполненная форма открывается в личном кабинете. Вы подтверждаете данные и отправляете договор на регистрацию.</p>
