@@ -83,6 +83,7 @@
   .btn-primary{ background:var(--moex-red); color:#fff; transition:background-color .2s ease, box-shadow .2s ease, transform .12s ease; }
   .btn-primary:hover{ background:var(--moex-red-dark); box-shadow:0 10px 30px -10px rgba(255,5,8,.55); }
   .btn-primary:active{ transform:translateY(1px); }
+  .btn-primary:disabled{ background:#D7D4D0; color:#fff; box-shadow:none; transform:none; cursor:not-allowed; pointer-events:none; }
   .btn-ghost{ transition:background-color .2s ease, border-color .2s ease, color .2s ease; }
   .btn-ghost:hover{ background:#fff; border-color:#33373B; }
 
@@ -113,6 +114,29 @@
   /* Per-block progressive-disclosure toggle chevron. */
   .block-toggle .chev{ transition:transform .22s cubic-bezier(.16,1,.3,1); }
   .block-toggle .chev.open{ transform:rotate(180deg); }
+
+  /* "Я проверил поля" — custom checkbox driven by the sr-only input. */
+  #reviewedRow:has(#reviewedCheck:checked) .reviewed-box{ background:var(--moex-red); border-color:var(--moex-red); }
+  #reviewedRow:has(#reviewedCheck:checked) .reviewed-tick{ opacity:1; }
+  #reviewedCheck:focus-visible + .reviewed-box{ box-shadow:0 0 0 3px rgba(255,5,8,.35); }
+
+  /* Incoterms help popover on the "Условия поставки" field. Opens on hover/focus
+     of the trigger; image lives in assets/incoterms.jpg. */
+  .info-pop{ position:relative; display:inline-flex; }
+  .info-pop .info-btn{ display:inline-grid; place-items:center; height:16px; width:16px; border-radius:9999px;
+    border:1px solid var(--moex-line); color:var(--moex-mute); background:#fff; font:600 11px/1 'Favorit Pro',sans-serif;
+    cursor:help; transition:border-color .15s ease, color .15s ease; }
+  .info-pop .info-btn:hover{ border-color:var(--moex-red); color:var(--moex-red); }
+  .info-pop .info-panel{ position:absolute; z-index:60; top:calc(100% + 8px); left:0;
+    width:min(460px,78vw); padding:10px; border-radius:14px; background:#fff;
+    border:1px solid var(--moex-line); box-shadow:0 20px 45px -16px rgba(51,55,59,.38);
+    opacity:0; visibility:hidden; transform:translateY(-4px); transition:opacity .16s ease, transform .16s ease, visibility .16s; }
+  .info-pop .info-panel img{ display:block; width:100%; height:auto; border-radius:8px; }
+  .info-pop .info-panel p{ margin:8px 2px 2px; font-size:11.5px; line-height:1.45; color:var(--moex-mute); }
+  .info-pop:hover .info-panel,
+  .info-pop:focus-within .info-panel{ opacity:1; visibility:visible; transform:translateY(0); }
+  /* Flip to the right edge when the field sits in the right grid column. */
+  .info-pop.pop-right .info-panel{ left:auto; right:0; }
 </style>
 </head>
 
@@ -254,7 +278,7 @@
     <div class="max-w-2xl" data-io>
       <p class="text-[13px] font-semibold uppercase tracking-[.14em] text-moex-red">Живое демо</p>
       <h2 class="font-display font-bold tracking-[-.02em] text-[32px] sm:text-[40px] mt-3 leading-[1.1]">Посмотрите, как заполняется форма</h2>
-      <p class="text-[16px] leading-[1.6] text-moex-mute mt-3">Демонстрация на примере договора поставки. Цвет поля показывает уверенность распознавания, под формой — найденные несоответствия.</p>
+      <p class="text-[16px] leading-[1.6] text-moex-mute mt-3">Демонстрация на примере договора поставки. Цвет поля показывает результат проверки по справочникам и правилам биржи, под формой — найденные несоответствия.</p>
     </div>
 
     <div class="mt-10 rounded-2xl border border-moex-line bg-white shadow-card overflow-hidden" data-io>
@@ -313,7 +337,7 @@
 
         <!-- legend -->
         <div class="flex flex-wrap gap-x-5 gap-y-2 px-6 sm:px-8 py-3 text-[12.5px] text-moex-mute border-b border-moex-line bg-moex-mist/40">
-          <span class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm bg-[#1F9D57]"></span>Распознано уверенно</span>
+          <span class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm bg-[#1F9D57]"></span>Распознано и заполнено</span>
           <span class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm bg-[#B5820A]"></span>Требует проверки</span>
           <span class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm bg-moex-red"></span>Обязательное не заполнено</span>
         </div>
@@ -323,12 +347,23 @@
         <!-- validation errors -->
         <div id="validationBox" class="px-6 sm:px-8 pb-2"></div>
 
-        <div class="px-6 sm:px-8 py-6 border-t border-moex-line bg-moex-mist/40 flex flex-wrap items-center justify-between gap-3">
-          <p class="text-[13px] text-moex-mute">Перед отправкой устраните ошибки, выделенные красным.</p>
-          <button id="submitForm" type="button" class="btn-primary rounded-xl px-6 py-3 text-[15px] font-semibold inline-flex items-center gap-2">
-            Отправить в личный кабинет
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-          </button>
+        <div class="px-6 sm:px-8 py-6 border-t border-moex-line bg-moex-mist/40 space-y-4">
+          <!-- Human-in-the-loop: explicit confirmation that a person checked the
+               prefilled fields. Required before submission (gates #submitForm). -->
+          <label id="reviewedRow" for="reviewedCheck" class="flex items-start gap-3 cursor-pointer select-none group">
+            <span class="reviewed-box mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border border-moex-line bg-white transition-colors group-hover:border-moex-red/60">
+              <svg class="reviewed-tick h-3 w-3 opacity-0 transition-opacity" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            </span>
+            <input id="reviewedCheck" type="checkbox" class="sr-only" />
+            <span class="text-[13.5px] leading-snug text-moex-ink/85">Я проверил(а) предзаполненные поля и подтверждаю их корректность</span>
+          </label>
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <p class="text-[13px] text-moex-mute">Перед отправкой устраните ошибки, выделенные красным.</p>
+            <button id="submitForm" type="button" disabled aria-disabled="true" class="btn-primary rounded-xl px-6 py-3 text-[15px] font-semibold inline-flex items-center gap-2">
+              Отправить в личный кабинет
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -372,8 +407,8 @@
       </article>
       <article data-io class="rounded-2xl border border-moex-line p-6 shadow-card hover:shadow-float transition-shadow">
         <div class="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-moex-red-soft"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FF0508" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
-        <h3 class="font-display font-bold text-[18px] mt-4">Прозрачная уверенность</h3>
-        <p class="text-[14.5px] leading-[1.6] text-moex-mute mt-2">Каждое поле подсвечено по уверенности распознавания — видно, где можно довериться, а что стоит перепроверить.</p>
+        <h3 class="font-display font-bold text-[18px] mt-4">Прозрачная проверка</h3>
+        <p class="text-[14.5px] leading-[1.6] text-moex-mute mt-2">Каждое поле подсвечено по результату сверки со справочниками и правилами биржи — сразу видно, что распознано, а что стоит перепроверить.</p>
       </article>
       <article data-io style="transition-delay:.06s" class="rounded-2xl border border-moex-line p-6 shadow-card hover:shadow-float transition-shadow">
         <div class="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-moex-red-soft"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FF0508" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg></div>
@@ -417,7 +452,7 @@
           <span class="font-display font-semibold text-[16.5px]">Нужно ли проверять результат вручную?</span>
           <svg class="faq-plus shrink-0" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FF0508" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
         </summary>
-        <p class="text-[15px] leading-[1.65] text-moex-mute mt-3">Финальное решение остаётся за вами. Сервис подсвечивает поля с низкой уверенностью и найденные несоответствия, чтобы проверка занимала минимум времени.</p>
+        <p class="text-[15px] leading-[1.65] text-moex-mute mt-3">Финальное решение остаётся за вами. Сервис подсвечивает поля, требующие внимания, и найденные несоответствия, чтобы проверка занимала минимум времени.</p>
       </details>
       <details class="group p-5 sm:p-6">
         <summary class="flex items-center justify-between gap-4">

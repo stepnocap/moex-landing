@@ -51,7 +51,8 @@
     ORGANIZATION_INN:        { label: "ИНН лица, заключившего договор", block: "1. Данные заявителя", kind: "text", required: false, placeholder: "Например: 1234567890" },
 
     // ── 2. Основные условия поставки (6) ───────────────────────────────────────
-    DELIVERY_TYPE_NAME:       { label: "Условия поставки товара", block: "2. Основные условия поставки", kind: "reference", required: true, placeholder: "Выберите условия по Incoterms 2020", helper: "По Incoterms 2020. Связано со способом поставки" },
+    DELIVERY_TYPE_NAME:       { label: "Условия поставки товара", block: "2. Основные условия поставки", kind: "reference", required: true, placeholder: "Выберите условия по Incoterms 2020", helper: "По Incoterms 2020. Связано со способом поставки",
+                                popover: { image: "assets/incoterms.jpg", alt: "Схема терминов Incoterms 2020 — распределение обязанностей продавца и покупателя", caption: "Incoterms 2020 — распределение обязанностей, рисков и затрат между продавцом и покупателем." } },
     BASIS_TYPE_NAME:          { label: "Тип базиса поставки", block: "2. Основные условия поставки", kind: "reference", required: true, placeholder: "Выберите из предложенного списка" },
     PORT_NAME:                { label: "Наименование порта", block: "2. Основные условия поставки", kind: "reference", required: false, searchable: true, placeholder: "Начните вводить название порта", helper: "Для базиса FOB / CPT / DAP. Поиск по справочнику портов" },
     DELIVERY_ZIP_CODE:        { label: "Индекс (базис поставки)", block: "2. Основные условия поставки", kind: "text", required: false, placeholder: "Например: 140923" },

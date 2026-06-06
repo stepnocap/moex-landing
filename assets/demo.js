@@ -1,12 +1,11 @@
 /* MOEX OTC smart-form demo.
    Loads a mock ProcessResponse, animates "recognition", renders the prefilled
-   form with confidence-based highlighting, and shows validation errors.
-   Field highlight logic mirrors proto/README.md. */
+   form, and shows validation errors. A field is highlighted by what we can
+   verify objectively — справочник match + cross-field rules — never by a model
+   self-confidence score (which is unreliable and was removed). */
 
 (() => {
   "use strict";
-
-  const CONFIDENCE_THRESHOLD = 0.7;
 
   // The form layout lives in the catalog (assets/catalog.js), not here.
   // ML only decides whether a value is filled — composition/order/block/label/type
@@ -68,21 +67,23 @@
   function boolText(v) { return v === "true" ? "Да" : v === "false" ? "Нет" : v; }
 
   // Returns one of: ok | warn | err | muted
+  // No model-confidence is used: a filled field is "ok" by default; it only turns
+  // "warn" for something we can check objectively — a reference value missing from
+  // the справочник. Cross-field rule conflicts repaint warn/err later (applyFieldRules).
   function fieldState(code, fv) {
     const required = isRequired(code) || REQUIRED_OVERRIDES[code] || false;
     if (!fv || fv.value === undefined || fv.value === "") {
       return required ? "err" : "muted";
     }
     if (meta(code).kind === "reference" && fv.referenceMatched === false) return "warn";
-    return fv.confidence >= CONFIDENCE_THRESHOLD ? "ok" : "warn";
+    return "ok";
   }
 
-  function tagFor(state, code, fv) {
+  function tagFor(state) {
+    // Base state only ("warn" here = reference value not in справочник; cross-field
+    // rule warnings are applied separately and don't change this tag).
     if (state === "ok") return { cls: "f-ok", tag: "распознано" };
-    if (state === "warn") {
-      const unmatched = fv && meta(code).kind === "reference" && fv.referenceMatched === false;
-      return { cls: "f-warn", tag: unmatched ? "нет в справочнике" : "проверьте" };
-    }
+    if (state === "warn") return { cls: "f-warn", tag: "нет в справочнике" };
     if (state === "err") return { cls: "f-err", tag: "обязательное" };
     return { cls: "f-muted", tag: "не найдено" };
   }
@@ -95,7 +96,7 @@
     const m = meta(code);
     const label = m.label;
     const state = fieldState(code, fv);
-    const { cls, tag } = tagFor(state, code, fv);
+    const { cls, tag } = tagFor(state);
     const value = fv && fv.value !== undefined ? fv.value : "";
     const ph = m.placeholder || "—";
     const fieldId = "fld_" + code;
@@ -136,14 +137,38 @@
       ? `<p class="f-help text-[11px] leading-snug text-moex-mute/90 mt-1.5">${m.helper}</p>`
       : "";
 
+    // Explainer for the yellow "нет в справочнике" state: the value WAS recognised
+    // from the document but didn't exactly match the exchange registry, so the user
+    // should pick from the list / verify. Shown only for that state; cleared on edit.
+    const refMsg = state === "warn"
+      ? `<p class="f-refmsg flex items-start gap-1.5 text-[11px] leading-snug text-warn mt-1.5">
+           <svg class="mt-px shrink-0" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#B5820A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+           <span>Значение распознано, но не найдено в реестре биржи — выберите из списка или проверьте написание.</span>
+         </p>`
+      : "";
+
+    // Optional image popover next to the label (e.g. Incoterms schema on the
+    // "Условия поставки" field). Opens on hover/focus of the "?" trigger — the
+    // image lives in the field's catalog meta (m.popover.image).
+    const info = m.popover
+      ? `<span class="info-pop ml-1 align-middle">
+           <button type="button" class="info-btn" aria-label="Подсказка: ${escapeAttr(m.popover.alt || label)}" aria-haspopup="dialog">?</button>
+           <span class="info-panel" role="dialog">
+             <img src="${escapeAttr(m.popover.image)}" alt="${escapeAttr(m.popover.alt || "")}" loading="lazy" />
+             ${m.popover.caption ? `<p>${escapeAttr(m.popover.caption)}</p>` : ""}
+           </span>
+         </span>`
+      : "";
+
     return `
       <div class="f-field ${cls} rounded-xl border px-3.5 py-2.5 transition-shadow" data-field="${code}">
         <div class="flex items-center justify-between gap-2 mb-1">
-          <label for="${fieldId}" class="text-[11.5px] font-medium text-moex-mute leading-tight">${label}</label>
+          <label for="${fieldId}" class="text-[11.5px] font-medium text-moex-mute leading-tight">${label}${info}</label>
           <span class="f-tag text-[10px] font-semibold rounded px-1.5 py-0.5 whitespace-nowrap">${tag}</span>
         </div>
         ${control}
         ${helper}
+        ${refMsg}
         <p class="f-warnmsg hidden items-start gap-1.5 text-[11px] leading-snug text-warn mt-1.5"></p>
       </div>`;
   }
@@ -211,6 +236,22 @@
     const errors = computeErrors();
     applyFieldRules(errors);
     renderValidation(errors);
+    syncSubmitState();
+  }
+
+  // The user must explicitly confirm they reviewed the prefilled fields before
+  // submitting (human-in-the-loop). The submit button is disabled until the
+  // "Я проверил поля" checkbox is ticked; hard errors are still enforced in submit().
+  function isReviewed() {
+    const cb = $("reviewedCheck");
+    return !!(cb && cb.checked);
+  }
+  function syncSubmitState() {
+    const btn = $("submitForm");
+    if (!btn) return;
+    const blocked = !isReviewed();
+    btn.disabled = blocked;
+    btn.setAttribute("aria-disabled", String(blocked));
   }
 
   function renderValidation(errors) {
@@ -407,9 +448,9 @@
   }
 
   // Repaint every field's cross-field state (yellow warning border + message under
-  // it, or red for a hard error) without re-rendering the whole form. Confidence-
-  // based base classes (set at render / on manual edit) are preserved when a field
-  // has no active rule. Called after every recompute.
+  // it, or red for a hard error) without re-rendering the whole form. The base
+  // classes (set at render / on manual edit from справочник match + required state)
+  // are preserved when a field has no active rule. Called after every recompute.
   function applyFieldRules(errors) {
     const map = fieldRuleMap(errors);
     document.querySelectorAll("#formGroups [data-field]").forEach((wrap) => {
@@ -463,6 +504,18 @@
   function wait(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
   function submit() {
+    // Guard: button is disabled until reviewed, but enforce here too (defence in depth).
+    if (!isReviewed()) {
+      const row = $("reviewedRow");
+      if (row) {
+        row.scrollIntoView({ behavior: "smooth", block: "center" });
+        row.animate(
+          [{ transform: "translateX(0)" }, { transform: "translateX(-4px)" }, { transform: "translateX(4px)" }, { transform: "translateX(0)" }],
+          { duration: 260 }
+        );
+      }
+      return;
+    }
     // Block on unresolved required-empty fields and live ERROR-severity rules.
     const errFields = document.querySelectorAll(".f-field.f-err");
     const hardErrors = computeErrors().filter((e) => e.severity === "SEVERITY_ERROR");
@@ -492,14 +545,33 @@
     stateEls.done.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
-  function reset() { show("drop"); }
+  function reset() {
+    const cb = $("reviewedCheck");
+    if (cb) cb.checked = false;
+    syncSubmitState();
+    show("drop");
+  }
+
+  // ── Live-mode hook ───────────────────────────────────
+  // The mock demo above is self-contained and unchanged. The live page
+  // (live.html + live.js) reuses this exact rendering/validation machinery
+  // instead of duplicating it: it builds a ProcessResponse-shaped object from
+  // the real backend and hands it to renderForm. Only these two functions are
+  // exposed; the mock path never touches them.
+  window.MOEX_DEMO = { renderForm, show };
 
   // ── Wire up ──────────────────────────────────────────
   document.addEventListener("DOMContentLoaded", () => {
+    // The live page (live.html) reuses this file ONLY for renderForm/show via the
+    // MOEX_DEMO hook above — it drives the form itself (live.js). The mock wiring
+    // below is keyed off the mock-only "Показать на примере" button, which the
+    // live page doesn't have, so demo.js never touches live.html's dropzone.
+    const exampleBtn = $("useExample");
+    if (!exampleBtn) return;
     const dz = $("dropzone");
     const fileInput = $("fileInput");
 
-    $("useExample").addEventListener("click", (e) => { e.stopPropagation(); startDemo(); });
+    exampleBtn.addEventListener("click", (e) => { e.stopPropagation(); startDemo(); });
 
     dz.addEventListener("click", () => fileInput.click());
     dz.addEventListener("keydown", (e) => {
@@ -523,6 +595,8 @@
     $("resetDemo").addEventListener("click", reset);
     $("restartDemo").addEventListener("click", reset);
     $("submitForm").addEventListener("click", submit);
+    // Confirmation checkbox gates the submit button (enabled only once ticked).
+    $("reviewedCheck").addEventListener("change", syncSubmitState);
 
     // Mark a field as filled-in by the form (autofill): set its base highlight + tag.
     // Used by the CIF/CFR → «цена включает транспортировку = Да» автозаполнение that
@@ -559,6 +633,9 @@
       wrap.classList.add(cls);
       const tagEl = wrap.querySelector(".f-tag");
       if (tagEl) tagEl.textContent = !val ? (required ? "обязательное" : "не найдено") : "изменено вручную";
+      // The "нет в справочнике" explainer is no longer relevant once the user edits.
+      const refMsgEl = wrap.querySelector(".f-refmsg");
+      if (refMsgEl) refMsgEl.remove();
       // Recompute cross-field rules so per-field warnings + summary clear as the
       // user fixes inputs (single pass repaints fields and the summary box).
       revalidate();
