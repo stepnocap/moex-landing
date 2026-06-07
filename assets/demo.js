@@ -552,20 +552,112 @@
     show("drop");
   }
 
-  // ── Live-mode hook ───────────────────────────────────
-  // The mock demo above is self-contained and unchanged. The live page
-  // (live.html + live.js) reuses this exact rendering/validation machinery
-  // instead of duplicating it: it builds a ProcessResponse-shaped object from
-  // the real backend and hands it to renderForm. Only these two functions are
-  // exposed; the mock path never touches them.
-  window.MOEX_DEMO = { renderForm, show };
+  // Mark a field as filled-in by the form (autofill): set its base highlight + tag.
+  // Used by the CIF/CFR → «цена включает транспортировку = Да» автозаполнение that
+  // сотрудники МБ просили (избавляет от типовой ошибки на масличных).
+  function paintAutofilled(code) {
+    const wrap = document.querySelector(`[data-field="${code}"]`);
+    if (!wrap) return;
+    wrap.classList.remove("f-err", "f-muted", "f-warn");
+    wrap.classList.add("f-ok");
+    const tagEl = wrap.querySelector(".f-tag");
+    if (tagEl) tagEl.textContent = "заполнено автоматически";
+  }
 
-  // ── Wire up ──────────────────────────────────────────
+  // Re-evaluate a field's highlight + live validation after manual edits.
+  function onEdit(e) {
+    const code = e.target.getAttribute && e.target.getAttribute("data-code");
+    if (!code) return;
+    const wrap = e.target.closest("[data-field]");
+    const val = e.target.value;
+
+    // Autofill: choosing CIF/CFR implies the price includes transport — preset it
+    // to «Да» (user can still override afterwards). Only nudge if not already «Да».
+    if (code === "DELIVERY_TYPE_NAME" && (val === "CIF" || val === "CFR")) {
+      const tEl = document.getElementById("fld_IS_PRICE_TRANSPORTATION_COSTS");
+      if (tEl && tEl.value !== "true") {
+        tEl.value = "true";
+        paintAutofilled("IS_PRICE_TRANSPORTATION_COSTS");
+      }
+    }
+
+    wrap.classList.remove("f-ok", "f-warn", "f-err", "f-muted");
+    const required = isRequired(code) || REQUIRED_OVERRIDES[code] || false;
+    const cls = !val ? (required ? "f-err" : "f-muted") : "f-ok";
+    wrap.classList.add(cls);
+    const tagEl = wrap.querySelector(".f-tag");
+    if (tagEl) tagEl.textContent = !val ? (required ? "обязательное" : "не найдено") : "изменено вручную";
+    // The "нет в справочнике" explainer is no longer relevant once the user edits.
+    const refMsgEl = wrap.querySelector(".f-refmsg");
+    if (refMsgEl) refMsgEl.remove();
+    // Recompute cross-field rules so per-field warnings + summary clear as the
+    // user fixes inputs (single pass repaints fields and the summary box).
+    revalidate();
+  }
+
+  function onToggleBlock(e) {
+    const btn = e.target.closest(".block-toggle");
+    if (!btn) return;
+    const bi = btn.getAttribute("data-toggle");
+    const extra = document.querySelector(`.block-extra[data-extra="${bi}"]`);
+    if (!extra) return;
+    const opening = extra.classList.contains("hidden");
+    extra.classList.toggle("hidden");
+    extra.classList.toggle("mt-3", opening);
+    btn.setAttribute("aria-expanded", String(opening));
+    const chev = btn.querySelector(".chev");
+    if (chev) chev.classList.toggle("open", opening);
+    const lbl = btn.querySelector(".toggle-label");
+    if (lbl) {
+      const n = extra.children.length;
+      lbl.textContent = opening ? "Свернуть пустые поля" : `Показать все поля (ещё ${n})`;
+    }
+  }
+
+  // Wire the form's interactive behaviour (edit→revalidate, autofill, block
+  // toggle, submit, reviewed-gate). Page-agnostic: the same #formGroups /
+  // #submitForm / #reviewedCheck IDs exist on both the mock page and the live
+  // page, so both reuse this — no duplicated edit/validation logic.
+  function wireFormInteractions() {
+    const groups = $("formGroups");
+    if (groups) {
+      groups.addEventListener("input", onEdit);
+      groups.addEventListener("change", onEdit);
+      groups.addEventListener("click", onToggleBlock);
+    }
+    const submitBtn = $("submitForm");
+    if (submitBtn) submitBtn.addEventListener("click", submit);
+    const reviewed = $("reviewedCheck");
+    if (reviewed) reviewed.addEventListener("change", syncSubmitState);
+    const resetBtn = $("resetDemo");
+    if (resetBtn) resetBtn.addEventListener("click", reset);
+    const restartBtn = $("restartDemo");
+    if (restartBtn) restartBtn.addEventListener("click", reset);
+  }
+
+  // Scroll-reveal for [data-io] sections (used on both pages). Gates the hiding
+  // CSS on JS being ready so content is never stuck invisible if scripts fail.
+  function wireScrollReveal() {
+    document.documentElement.classList.add("js-io");
+    const io = new IntersectionObserver(
+      (entries) => entries.forEach((en) => { if (en.isIntersecting) { en.target.classList.add("in"); io.unobserve(en.target); } }),
+      { threshold: 0.12 }
+    );
+    document.querySelectorAll("[data-io]").forEach((el) => io.observe(el));
+  }
+
+  // ── Live-mode hook ───────────────────────────────────
+  // The mock demo above is self-contained. The live page (live.html + live.js)
+  // reuses this exact machinery instead of duplicating it: renderForm builds the
+  // form, wireFormInteractions gives identical edit/validation/autofill/submit,
+  // wireScrollReveal animates the page. The mock path never depends on the hook.
+  window.MOEX_DEMO = { renderForm, show, wireFormInteractions, wireScrollReveal, revalidate };
+
+  // ── Wire up (mock page only) ─────────────────────────
   document.addEventListener("DOMContentLoaded", () => {
-    // The live page (live.html) reuses this file ONLY for renderForm/show via the
-    // MOEX_DEMO hook above — it drives the form itself (live.js). The mock wiring
-    // below is keyed off the mock-only "Показать на примере" button, which the
-    // live page doesn't have, so demo.js never touches live.html's dropzone.
+    // The mock wiring is keyed off the mock-only "Показать на примере" button,
+    // which the live page doesn't have. On the live page live.js calls the
+    // exposed wireFormInteractions/wireScrollReveal itself.
     const exampleBtn = $("useExample");
     if (!exampleBtn) return;
     const dz = $("dropzone");
@@ -592,84 +684,7 @@
       startDemo(f ? f.name : undefined);
     });
 
-    $("resetDemo").addEventListener("click", reset);
-    $("restartDemo").addEventListener("click", reset);
-    $("submitForm").addEventListener("click", submit);
-    // Confirmation checkbox gates the submit button (enabled only once ticked).
-    $("reviewedCheck").addEventListener("change", syncSubmitState);
-
-    // Mark a field as filled-in by the form (autofill): set its base highlight + tag.
-    // Used by the CIF/CFR → «цена включает транспортировку = Да» автозаполнение that
-    // сотрудники МБ просили (избавляет от типовой ошибки на масличных).
-    function paintAutofilled(code) {
-      const wrap = document.querySelector(`[data-field="${code}"]`);
-      if (!wrap) return;
-      wrap.classList.remove("f-err", "f-muted", "f-warn");
-      wrap.classList.add("f-ok");
-      const tagEl = wrap.querySelector(".f-tag");
-      if (tagEl) tagEl.textContent = "заполнено автоматически";
-    }
-
-    // Re-evaluate a field's highlight + live validation after manual edits.
-    const onEdit = (e) => {
-      const code = e.target.getAttribute && e.target.getAttribute("data-code");
-      if (!code) return;
-      const wrap = e.target.closest("[data-field]");
-      const val = e.target.value;
-
-      // Autofill: choosing CIF/CFR implies the price includes transport — preset it
-      // to «Да» (user can still override afterwards). Only nudge if not already «Да».
-      if (code === "DELIVERY_TYPE_NAME" && (val === "CIF" || val === "CFR")) {
-        const tEl = document.getElementById("fld_IS_PRICE_TRANSPORTATION_COSTS");
-        if (tEl && tEl.value !== "true") {
-          tEl.value = "true";
-          paintAutofilled("IS_PRICE_TRANSPORTATION_COSTS");
-        }
-      }
-
-      wrap.classList.remove("f-ok", "f-warn", "f-err", "f-muted");
-      const required = isRequired(code) || REQUIRED_OVERRIDES[code] || false;
-      const cls = !val ? (required ? "f-err" : "f-muted") : "f-ok";
-      wrap.classList.add(cls);
-      const tagEl = wrap.querySelector(".f-tag");
-      if (tagEl) tagEl.textContent = !val ? (required ? "обязательное" : "не найдено") : "изменено вручную";
-      // The "нет в справочнике" explainer is no longer relevant once the user edits.
-      const refMsgEl = wrap.querySelector(".f-refmsg");
-      if (refMsgEl) refMsgEl.remove();
-      // Recompute cross-field rules so per-field warnings + summary clear as the
-      // user fixes inputs (single pass repaints fields and the summary box).
-      revalidate();
-    };
-    $("formGroups").addEventListener("input", onEdit);
-    $("formGroups").addEventListener("change", onEdit);
-
-    // Per-block progressive disclosure: reveal a block's empty optional fields.
-    $("formGroups").addEventListener("click", (e) => {
-      const btn = e.target.closest(".block-toggle");
-      if (!btn) return;
-      const bi = btn.getAttribute("data-toggle");
-      const extra = document.querySelector(`.block-extra[data-extra="${bi}"]`);
-      if (!extra) return;
-      const opening = extra.classList.contains("hidden");
-      extra.classList.toggle("hidden");
-      extra.classList.toggle("mt-3", opening);
-      btn.setAttribute("aria-expanded", String(opening));
-      const chev = btn.querySelector(".chev");
-      if (chev) chev.classList.toggle("open", opening);
-      const lbl = btn.querySelector(".toggle-label");
-      if (lbl) {
-        const n = extra.children.length;
-        lbl.textContent = opening ? "Свернуть пустые поля" : `Показать все поля (ещё ${n})`;
-      }
-    });
-
-    // Scroll reveal for [data-io] elements. Gate the hiding CSS on JS being ready
-    // so the content is never stuck invisible if scripts fail to run.
-    document.documentElement.classList.add("js-io");
-    const io = new IntersectionObserver(
-      (entries) => entries.forEach((en) => { if (en.isIntersecting) { en.target.classList.add("in"); io.unobserve(en.target); } }),
-      { threshold: 0.12 }
-    );
-    document.querySelectorAll("[data-io]").forEach((el) => io.observe(el));
+    wireFormInteractions();
+    wireScrollReveal();
   });
 })();
